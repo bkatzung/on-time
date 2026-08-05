@@ -1,0 +1,23 @@
+<resources>
+    <string name="app_name">On Time</string>
+    
+    <!-- Main Screen - Background Sound -->
+    <string name="bg_sound_title">Background Sound</string>
+    <string name="bg_sound_duration_label">Duration (HH:MM)</string>
+    <string name="bg_sound_play">Play</string>
+    <string name="bg_sound_stop">Stop</string>
+    <string name="bg_sound_status_idle">Status: Stopped</string>
+    <string name="bg_sound_status_playing">Status: Playing</string>
+    <string name="bg_sound_status_playing_timed">Status: Playing (Ends in %1$02d:%2$02d)</string>
+    
+    <!-- Main Screen - Alarm -->
+    <string name="alarm_title">Alarm Clock</string>
+    <string name="alarm_status_none">No active alarm</string>
+    <string name="alarm_status_ringing">ALARM RINGING!</string>
+    <string name="alarm_dismiss">Dismiss</string>
+    <string name="alarm_snooze">Snooze</string>
+    
+    <!-- Navigation -->
+    <string name="nav_schedule">Edit Schedule</string>
+    <string name="nav_settings">Settings</string>
+</resources>

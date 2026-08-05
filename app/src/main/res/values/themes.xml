@@ -1,0 +1,17 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Theme.OnTime" parent="Theme.Material3.DayNight.NoActionBar" />
+
+    <!-- Theme overlay for TimePicker to increase AM/PM contrast and emphasis -->
+    <style name="Theme.OnTime.TimePickerOverlay" parent="">
+        <!-- Increase contrast of selected AM/PM button by using primary colors -->
+        <item name="colorSecondaryContainer">?attr/colorPrimary</item>
+        <item name="colorOnSecondaryContainer">?attr/colorOnPrimary</item>
+        <!-- Make the text bold by overriding the text appearance used by the AM/PM buttons -->
+        <item name="textAppearanceLabelMedium">@style/Theme.OnTime.TimePickerLabelMedium</item>
+    </style>
+
+    <style name="Theme.OnTime.TimePickerLabelMedium" parent="TextAppearance.Material3.LabelMedium">
+        <item name="android:textStyle">bold</item>
+        <item name="android:textFontWeight" tools:targetApi="p">700</item>
+    </style>
+</resources>
