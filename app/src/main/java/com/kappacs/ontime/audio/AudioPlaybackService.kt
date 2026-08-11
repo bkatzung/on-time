@@ -14,6 +14,7 @@ import android.net.Uri
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
@@ -66,6 +67,7 @@ class AudioPlaybackService : Service() {
     private var alarmPlayer: MediaPlayer? = null
     private lateinit var settingsRepository: SettingsRepository
     private lateinit var fadeController: FadeController
+    private var wakeLock: PowerManager.WakeLock? = null
 
     private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
     private var bgCountdownJob: Job? = null
@@ -169,6 +171,7 @@ class AudioPlaybackService : Service() {
 
     private fun startBackgroundSound(durationMs: Long) {
         Log.d(TAG, "startBackgroundSound durationMs: $durationMs")
+        acquireWakeLock()
         if (durationMs > 0) {
             _state.value = _state.value.copy(
                 isBgPlaying = true,
@@ -194,6 +197,7 @@ class AudioPlaybackService : Service() {
                 val uri = if (!uriString.isNullOrEmpty()) Uri.parse(uriString) else Settings.System.DEFAULT_RINGTONE_URI
                 
                 bgPlayer = MediaPlayer().apply {
+                    setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
                     setDataSource(applicationContext, uri)
                     setAudioAttributes(
                         AudioAttributes.Builder()
@@ -291,6 +295,7 @@ class AudioPlaybackService : Service() {
 
     private fun startAlarm(fadeMs: Long) {
         Log.d(TAG, "startAlarm fadeMs: $fadeMs")
+        acquireWakeLock()
         _state.value = _state.value.copy(isAlarmRinging = true)
         serviceScope.launch {
             try {
@@ -334,6 +339,7 @@ class AudioPlaybackService : Service() {
                             Log.d(TAG, "Transition: Starting alarm fade-in over ${actualFadeMs}ms")
                             try {
                                 alarmPlayer = MediaPlayer().apply {
+                                    setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
                                     try {
                                         setDataSource(applicationContext, uri)
                                     } catch (e: Exception) {
@@ -362,6 +368,7 @@ class AudioPlaybackService : Service() {
                     )
                 } else {
                     alarmPlayer = MediaPlayer().apply {
+                        setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
                         try {
                             setDataSource(applicationContext, uri)
                         } catch (e: Exception) {
@@ -488,6 +495,7 @@ class AudioPlaybackService : Service() {
         val currentState = _state.value
         if (!currentState.isBgPlaying && !currentState.isAlarmRinging) {
             Log.d(TAG, "No active playback, stopping service")
+            releaseWakeLock()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         } else {
@@ -591,12 +599,40 @@ class AudioPlaybackService : Service() {
         }
     }
 
+    private fun acquireWakeLock() {
+        if (wakeLock == null) {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+            wakeLock = powerManager?.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "OnTime:AudioPlaybackServiceWakeLock"
+            )?.apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+            Log.d(TAG, "WakeLock acquired")
+        }
+    }
+
+    private fun releaseWakeLock() {
+        try {
+            if (wakeLock?.isHeld == true) {
+                wakeLock?.release()
+                Log.d(TAG, "WakeLock released")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error releasing WakeLock", e)
+        } finally {
+            wakeLock = null
+        }
+    }
+
     override fun onDestroy() {
         Log.d(TAG, "onDestroy")
         bgCountdownJob?.cancel()
         fadeController.cancelAll()
         bgPlayer?.release()
         alarmPlayer?.release()
+        releaseWakeLock()
         super.onDestroy()
     }
 }
