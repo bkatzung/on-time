@@ -40,6 +40,7 @@ class MainActivity : AppCompatActivity() {
     private var isAlarmSnoozed = false
     private var alarmSnoozeTriggerTime = 0L
     private var scheduleEvents = emptyList<ScheduleEvent>()
+    private var isBgSoundConfigured = false
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -104,6 +105,17 @@ class MainActivity : AppCompatActivity() {
                     scheduleRepository.getAllEventsFlow().collect { events ->
                         scheduleEvents = events
                         updateAlarmUi()
+                    }
+                }
+                launch {
+                    settingsRepository.bgSoundUri.collect { uri ->
+                        isBgSoundConfigured = !uri.isNullOrEmpty()
+                        val service = audioService
+                        if (service != null) {
+                            updateUi(service.state.value)
+                        } else {
+                            updateBgUiOffline()
+                        }
                     }
                 }
             }
@@ -277,11 +289,19 @@ class MainActivity : AppCompatActivity() {
             binding.btnBgPlay.isEnabled = false
             binding.btnBgStop.isEnabled = true
         } else {
+            updateBgUiOffline()
+        }
+    }
+
+    private fun updateBgUiOffline() {
+        if (isBgSoundConfigured) {
             binding.textBgSoundStatus.text = getString(R.string.bg_sound_status_idle)
             binding.btnBgPlay.isEnabled = true
-            binding.btnBgStop.isEnabled = false
+        } else {
+            binding.textBgSoundStatus.text = getString(R.string.bg_sound_status_not_configured)
+            binding.btnBgPlay.isEnabled = false
         }
-
+        binding.btnBgStop.isEnabled = false
     }
 
     private fun checkNotificationPermission() {

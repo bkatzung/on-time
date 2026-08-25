@@ -9,6 +9,7 @@
     <string name="bg_sound_status_idle">Status: Stopped</string>
     <string name="bg_sound_status_playing">Status: Playing</string>
     <string name="bg_sound_status_playing_timed">Status: Playing (Ends in %1$02d:%2$02d)</string>
+    <string name="bg_sound_status_not_configured">Status: No sound configured</string>
     
     <!-- Main Screen - Alarm -->
     <string name="alarm_title">Alarm Clock</string>

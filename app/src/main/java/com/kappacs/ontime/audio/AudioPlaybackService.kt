@@ -73,6 +73,14 @@ class AudioPlaybackService : Service() {
     private var bgCountdownJob: Job? = null
     private var bgEndTime: Long = 0L
 
+    private var bgRestartAttempts = 0
+    private var lastBgRestartTime = 0L
+    private var bgRestartJob: Job? = null
+
+    private var alarmRestartAttempts = 0
+    private var lastAlarmRestartTime = 0L
+    private var alarmRestartJob: Job? = null
+
     private val binder = LocalBinder()
 
     inner class LocalBinder : Binder() {
@@ -131,6 +139,10 @@ class AudioPlaybackService : Service() {
                     triggerScheduledEvent(eventId)
                 }
             }
+            null -> {
+                Log.d(TAG, "onStartCommand action is null, checking stored state to recover")
+                recoverState()
+            }
         }
 
         updateForegroundNotification()
@@ -169,8 +181,11 @@ class AudioPlaybackService : Service() {
         }
     }
 
-    private fun startBackgroundSound(durationMs: Long) {
-        Log.d(TAG, "startBackgroundSound durationMs: $durationMs")
+    private fun startBackgroundSound(durationMs: Long, isRestart: Boolean = false) {
+        Log.d(TAG, "startBackgroundSound durationMs: $durationMs, isRestart: $isRestart")
+        if (!isRestart) {
+            bgRestartAttempts = 0
+        }
         acquireWakeLock()
         if (durationMs > 0) {
             _state.value = _state.value.copy(
@@ -194,7 +209,12 @@ class AudioPlaybackService : Service() {
                 bgPlayer?.release()
                 
                 val uriString = settingsRepository.bgSoundUri.first()
-                val uri = if (!uriString.isNullOrEmpty()) Uri.parse(uriString) else Settings.System.DEFAULT_RINGTONE_URI
+                if (uriString.isNullOrEmpty()) {
+                    Log.w(TAG, "No background sound configured, not playing anything")
+                    cleanupBgPlayer()
+                    return@launch
+                }
+                val uri = Uri.parse(uriString)
                 
                 bgPlayer = MediaPlayer().apply {
                     setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
@@ -206,6 +226,15 @@ class AudioPlaybackService : Service() {
                             .build()
                     )
                     isLooping = true
+                    setOnErrorListener { _, what, extra ->
+                        Log.e(TAG, "bgPlayer error: what=$what, extra=$extra")
+                        handleBgPlayerError()
+                        true
+                    }
+                    setOnCompletionListener {
+                        Log.w(TAG, "bgPlayer completed unexpectedly despite isLooping=true")
+                        handleBgPlayerError()
+                    }
                     prepare()
                     setVolume(1.0f, 1.0f)
                     start()
@@ -293,8 +322,11 @@ class AudioPlaybackService : Service() {
         checkStopSelf()
     }
 
-    private fun startAlarm(fadeMs: Long) {
-        Log.d(TAG, "startAlarm fadeMs: $fadeMs")
+    private fun startAlarm(fadeMs: Long, isRestart: Boolean = false) {
+        Log.d(TAG, "startAlarm fadeMs: $fadeMs, isRestart: $isRestart")
+        if (!isRestart) {
+            alarmRestartAttempts = 0
+        }
         acquireWakeLock()
         _state.value = _state.value.copy(isAlarmRinging = true)
         serviceScope.launch {
@@ -311,13 +343,13 @@ class AudioPlaybackService : Service() {
                 val isBgPlaying = _state.value.isBgPlaying
 
                 if (isBgPlaying && bgPlayer != null && fadeMs > 0) {
+                    bgCountdownJob?.cancel()
+                    bgCountdownJob = null
                     fadeController.transitionBgToAlarm(
                         bgPlayer = bgPlayer,
                         transitionTimeMs = fadeMs,
                         onBgSilent = {
                             Log.d(TAG, "Transition: Background sound is now silent, cleaning up")
-                            bgCountdownJob?.cancel()
-                            bgCountdownJob = null
                             try {
                                 bgPlayer?.stop()
                                 bgPlayer?.release()
@@ -353,6 +385,15 @@ class AudioPlaybackService : Service() {
                                             .build()
                                     )
                                     isLooping = true
+                                    setOnErrorListener { _, what, extra ->
+                                        Log.e(TAG, "alarmPlayer error during transition: what=$what, extra=$extra")
+                                        handleAlarmPlayerError()
+                                        true
+                                    }
+                                    setOnCompletionListener {
+                                        Log.w(TAG, "alarmPlayer completed unexpectedly during transition despite isLooping=true")
+                                        handleAlarmPlayerError()
+                                    }
                                     prepare()
                                     setVolume(0f, 0f)
                                     start()
@@ -367,6 +408,29 @@ class AudioPlaybackService : Service() {
                         }
                     )
                 } else {
+                    if (isBgPlaying || bgPlayer != null) {
+                        Log.d(TAG, "Stopping active background sound immediately upon alarm start")
+                        bgCountdownJob?.cancel()
+                        bgCountdownJob = null
+                        fadeController.cancelBgFade()
+                        try {
+                            bgPlayer?.stop()
+                            bgPlayer?.release()
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error stopping bgPlayer on alarm start", e)
+                        } finally {
+                            bgPlayer = null
+                        }
+                        _state.value = _state.value.copy(
+                            isBgPlaying = false,
+                            bgDurationMs = 0L,
+                            bgTimeRemainingMs = 0L
+                        )
+                        serviceScope.launch {
+                            settingsRepository.setBgPlayingState(playing = false, durationMs = 0L, endTime = 0L)
+                        }
+                    }
+
                     alarmPlayer = MediaPlayer().apply {
                         setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
                         try {
@@ -382,6 +446,15 @@ class AudioPlaybackService : Service() {
                                 .build()
                         )
                         isLooping = true
+                        setOnErrorListener { _, what, extra ->
+                            Log.e(TAG, "alarmPlayer error: what=$what, extra=$extra")
+                            handleAlarmPlayerError()
+                            true
+                        }
+                        setOnCompletionListener {
+                            Log.w(TAG, "alarmPlayer completed unexpectedly despite isLooping=true")
+                            handleAlarmPlayerError()
+                        }
                         prepare()
                         if (fadeMs > 0) {
                             setVolume(0f, 0f)
@@ -626,9 +699,149 @@ class AudioPlaybackService : Service() {
         }
     }
 
+    private fun handleBgPlayerError() {
+        Log.d(TAG, "handleBgPlayerError")
+        bgCountdownJob?.cancel()
+        bgCountdownJob = null
+        
+        try {
+            bgPlayer?.stop()
+            bgPlayer?.release()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error releasing bgPlayer in error handler", e)
+        } finally {
+            bgPlayer = null
+        }
+
+        bgRestartJob?.cancel()
+        bgRestartJob = serviceScope.launch {
+            val now = SystemClock.elapsedRealtime()
+            if (now - lastBgRestartTime > 10000) {
+                bgRestartAttempts = 0
+            }
+            lastBgRestartTime = now
+
+            if (bgRestartAttempts >= 3) {
+                Log.e(TAG, "Too many background sound restart attempts, stopping background sound")
+                cleanupBgPlayer()
+                return@launch
+            }
+
+            bgRestartAttempts++
+            delay(2000) // Wait 2 seconds before restarting
+
+            try {
+                val bgPlaying = settingsRepository.bgPlaying.first()
+                if (bgPlaying) {
+                    val bgDurationMs = settingsRepository.bgDurationMs.first()
+                    val bgEndTime = settingsRepository.bgEndTime.first()
+                    val remainingMs = if (bgDurationMs > 0) {
+                        bgEndTime - System.currentTimeMillis()
+                    } else {
+                        0L
+                    }
+
+                    if (bgDurationMs == 0L || remainingMs > 0) {
+                        Log.d(TAG, "Restarting background sound (attempt $bgRestartAttempts)")
+                        startBackgroundSound(if (bgDurationMs > 0) remainingMs else 0L, isRestart = true)
+                    } else {
+                        Log.d(TAG, "Background sound has expired, not restarting")
+                        cleanupBgPlayer()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error during background sound restart attempt", e)
+            }
+        }
+    }
+
+    private fun handleAlarmPlayerError() {
+        Log.d(TAG, "handleAlarmPlayerError")
+        fadeController.cancelAlarmFade()
+        fadeController.cancelTransition()
+        
+        try {
+            alarmPlayer?.stop()
+            alarmPlayer?.release()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error releasing alarmPlayer in error handler", e)
+        } finally {
+            alarmPlayer = null
+        }
+
+        alarmRestartJob?.cancel()
+        alarmRestartJob = serviceScope.launch {
+            val now = SystemClock.elapsedRealtime()
+            if (now - lastAlarmRestartTime > 10000) {
+                alarmRestartAttempts = 0
+            }
+            lastAlarmRestartTime = now
+
+            if (alarmRestartAttempts >= 3) {
+                Log.e(TAG, "Too many alarm restart attempts, stopping alarm")
+                stopAlarmSound()
+                return@launch
+            }
+
+            alarmRestartAttempts++
+            delay(2000) // Wait 2 seconds before restarting
+
+            try {
+                val alarmRinging = settingsRepository.alarmRinging.first()
+                if (alarmRinging) {
+                    Log.d(TAG, "Restarting alarm (attempt $alarmRestartAttempts)")
+                    startAlarm(fadeMs = 0L, isRestart = true)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error during alarm restart attempt", e)
+            }
+        }
+    }
+
+    private fun recoverState() {
+        serviceScope.launch {
+            try {
+                val alarmRinging = settingsRepository.alarmRinging.first()
+                if (alarmRinging) {
+                    Log.d(TAG, "Recovering state: Alarm should be ringing, starting alarm")
+                    startAlarm(fadeMs = 0L)
+                    return@launch
+                }
+
+                val bgPlaying = settingsRepository.bgPlaying.first()
+                if (bgPlaying) {
+                    val bgDurationMs = settingsRepository.bgDurationMs.first()
+                    val bgEndTime = settingsRepository.bgEndTime.first()
+                    val remainingMs = if (bgDurationMs > 0) {
+                        bgEndTime - System.currentTimeMillis()
+                    } else {
+                        0L
+                    }
+
+                    if (bgDurationMs == 0L || remainingMs > 0) {
+                        Log.d(TAG, "Recovering state: Background sound should be playing. Remaining: ${remainingMs}ms")
+                        startBackgroundSound(if (bgDurationMs > 0) remainingMs else 0L)
+                    } else {
+                        Log.d(TAG, "Recovering state: Background sound has already expired. Clearing state.")
+                        settingsRepository.setBgPlayingState(playing = false, durationMs = 0L, endTime = 0L)
+                        checkStopSelf()
+                    }
+                } else {
+                    Log.d(TAG, "Recovering state: Nothing was playing, checking if we should stop self")
+                    checkStopSelf()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error recovering state", e)
+                checkStopSelf()
+            }
+        }
+    }
+
     override fun onDestroy() {
         Log.d(TAG, "onDestroy")
         bgCountdownJob?.cancel()
+        bgRestartJob?.cancel()
+        alarmRestartJob?.cancel()
         fadeController.cancelAll()
         bgPlayer?.release()
         alarmPlayer?.release()

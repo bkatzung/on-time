@@ -152,6 +152,13 @@ class SettingsActivity : AppCompatActivity() {
                 }
             }
         }
+
+        lifecycleScope.launch {
+            settingsRepository.alarmRinging.collect { ringing ->
+                binding.btnPlayAlarm.isEnabled = !ringing
+                binding.btnStopAlarm.isEnabled = ringing
+            }
+        }
     }
 
     private fun getSoundName(uriString: String?, defaultName: String): String {
