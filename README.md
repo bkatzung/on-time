@@ -17,10 +17,15 @@
   - Enable/disable events without deleting them.
 - **Advanced Audio Transitions**:
   - Sequential fade transitions: when an alarm triggers while background sound is playing, the background sound fades to silent over `t` seconds, and then the alarm sound fades in over the next `t` seconds (total transition time of `2t` seconds).
+- **Incoming-Call-Style Snooze & Dismiss Controls**:
+  - **Lock Screen / Screen Off**: Full-screen overlay Activity over the keyguard with a bidirectional swipe gesture slider (**Swipe Right to Snooze**, **Swipe Left to Dismiss**).
+  - **Device Unlocked / In Use**: Non-intrusive floating Heads-Up Notification (HUN) banner with quick-action Snooze and Dismiss buttons.
+  - **Configurable Haptics**: Optional tactile vibration feedback upon reaching swipe thresholds (disabled by default in settings).
+  - **Accidental Trigger Protection**: Requires deliberate swipe thresholds to avoid accidental pocket dismissals; preserves standard volume rocker functionality.
 - **Reboot & Upgrade Resilience**:
   - Automatically resumes background sound, active alarms, and reschedules snoozed alarms after a device reboot or app upgrade.
-  - Background sounds require screen unlock after reboot in order to resume (for media access)
-  - Alarms will still trigger (with a system default alarm) if not unlocked since reboot
+  - Background sounds require screen unlock after reboot in order to resume (for media access).
+  - Alarms will still trigger (with a system default alarm) if not unlocked since reboot.
 - **Clean & Distinct UI**:
   - Background sound controls and alarm controls are visually and logically separated.
   - Custom schedule editor with a two-pass rotary time selector (analog clock style).
@@ -63,8 +68,10 @@ flowchart TD
 │       ├── java/com/kappacs/ontime/
 │       │   ├── MainActivity.kt              # Main screen (background sound & alarm status)
 │       │   ├── audio/
-│       │   │   ├── AudioPlaybackService.kt  # Foreground service for audio playback
-│       │   │   └── FadeController.kt        # Audio fade-in/out and transition math
+│       │   │   ├── AlarmActivity.kt         # Dedicated lock screen overlay with swipe controls
+│       │   │   ├── AudioPlaybackService.kt  # Foreground service for audio playback & notifications
+│       │   │   ├── FadeController.kt        # Audio fade-in/out and transition math
+│       │   │   └── SwipeActionView.kt       # Bidirectional swipe slider for snooze/dismiss
 │       │   ├── boot/
 │       │   │   └── BootAndUpgradeReceiver.kt # Restores state on reboot/upgrade
 │       │   ├── schedule/

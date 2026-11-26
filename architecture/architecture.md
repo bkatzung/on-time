@@ -34,8 +34,10 @@ flowchart TD
 app/src/main/java/com/kappacs/ontime/
 ├── MainActivity.kt              # Phase 2+: main screen (play/stop background, alarm status)
 ├── audio/
+│   ├── AlarmActivity.kt         # Lock screen overlay with snooze/dismiss swipe controls
 │   ├── AudioPlaybackService.kt  # Foreground Service (Phase 3)
-│   └── FadeController.kt        # Fade-in/out + transition math (Phase 5-7)
+│   ├── FadeController.kt        # Fade-in/out + transition math (Phase 5-7)
+│   └── SwipeActionView.kt       # Bidirectional swipe slider for snooze/dismiss
 ├── settings/
 │   ├── SettingsActivity.kt      # Phase 4
 │   └── SettingsRepository.kt    # DataStore-backed (Phase 4)
