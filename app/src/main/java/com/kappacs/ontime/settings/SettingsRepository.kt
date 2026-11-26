@@ -25,6 +25,7 @@ class SettingsRepository(context: Context) {
         val KEY_ALARM_SOUND_URI = stringPreferencesKey("alarm_sound_uri")
         val KEY_BG_FADE_TIME_SEC = intPreferencesKey("bg_fade_time_sec")
         val KEY_ALARM_SNOOZE_MIN = intPreferencesKey("alarm_snooze_min")
+        val KEY_HAPTIC_FEEDBACK_ENABLED = booleanPreferencesKey("haptic_feedback_enabled")
         val KEY_BG_PLAYING = booleanPreferencesKey("bg_playing")
         val KEY_BG_DURATION_MS = longPreferencesKey("bg_duration_ms")
         val KEY_BG_END_TIME = longPreferencesKey("bg_end_time")
@@ -79,6 +80,18 @@ class SettingsRepository(context: Context) {
         }
         .map { preferences ->
             preferences[KEY_ALARM_SNOOZE_MIN] ?: 5
+        }
+
+    val hapticFeedbackEnabled: Flow<Boolean> = deContext.dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences ->
+            preferences[KEY_HAPTIC_FEEDBACK_ENABLED] ?: false
         }
 
     val bgPlaying: Flow<Boolean> = deContext.dataStore.data
@@ -209,6 +222,12 @@ class SettingsRepository(context: Context) {
     suspend fun setAlarmSnoozeMin(minutes: Int) {
         deContext.dataStore.edit { preferences ->
             preferences[KEY_ALARM_SNOOZE_MIN] = minutes
+        }
+    }
+
+    suspend fun setHapticFeedbackEnabled(enabled: Boolean) {
+        deContext.dataStore.edit { preferences ->
+            preferences[KEY_HAPTIC_FEEDBACK_ENABLED] = enabled
         }
     }
 }

@@ -178,6 +178,15 @@
                         android:text="5" />
                 </com.google.android.material.textfield.TextInputLayout>
 
+                <!-- Haptic Feedback Toggle -->
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/switchHapticFeedback"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:text="Haptic Feedback on Alarm Actions"
+                    android:textSize="14sp" />
+
                 <!-- Play/Stop Buttons -->
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -214,7 +223,7 @@
             android:layout_gravity="center_horizontal"
             android:layout_marginTop="24dp"
             android:layout_marginBottom="16dp"
-            android:text="Build: 2026-08-25 13:54Z"
+            android:text="Build: 2026-11-26 00:11Z"
             android:textAppearance="?attr/textAppearanceLabelSmall"
             android:textColor="?attr/colorOnSurfaceVariant" />
 

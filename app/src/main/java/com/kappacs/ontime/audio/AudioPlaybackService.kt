@@ -37,7 +37,8 @@ class AudioPlaybackService : Service() {
     companion object {
         private const val TAG = "AudioPlaybackService"
         private const val NOTIFICATION_ID = 1001
-        private const val CHANNEL_ID = "audio_playback_channel"
+        private const val CHANNEL_BG_ID = "bg_playback_channel"
+        private const val CHANNEL_ALARM_ID = "alarm_ringing_channel"
 
         // Intent Actions
         const val ACTION_START_BG = "com.kappacs.ontime.action.START_BG"
@@ -583,49 +584,21 @@ class AudioPlaybackService : Service() {
     }
 
     private fun buildNotification(state: ServiceState): Notification {
-        val title = if (state.isAlarmRinging) {
-            getString(R.string.alarm_status_ringing)
-        } else {
-            getString(R.string.app_name)
-        }
-
-        val text = when {
-            state.isAlarmRinging -> "Alarm is active!"
-            state.isBgPlaying && state.bgDurationMs > 0 -> {
-                val minutes = (state.bgTimeRemainingMs / 1000) / 60
-                val seconds = (state.bgTimeRemainingMs / 1000) % 60
-                String.format("Background sound playing (%02d:%02d remaining)", minutes, seconds)
-            }
-            state.isBgPlaying -> "Background sound playing"
-            else -> "On Time is running"
-        }
-
-        val mainIntent = Intent(this, MainActivity::class.java)
-        val pendingIntent = PendingIntent.getActivity(
-            this, 0, mainIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-            .setContentTitle(title)
-            .setContentText(text)
-            .setContentIntent(pendingIntent)
-            .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-
         if (state.isAlarmRinging) {
+            val alarmIntent = Intent(this, AlarmActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            }
+            val alarmPendingIntent = PendingIntent.getActivity(
+                this, 100, alarmIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
             val dismissIntent = Intent(this, AudioPlaybackService::class.java).apply {
                 action = ACTION_DISMISS_ALARM
             }
             val dismissPending = PendingIntent.getService(
                 this, 1, dismissIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            builder.addAction(
-                android.R.drawable.ic_menu_close_clear_cancel,
-                getString(R.string.alarm_dismiss),
-                dismissPending
             )
 
             val snoozeIntent = Intent(this, AudioPlaybackService::class.java).apply {
@@ -635,40 +608,102 @@ class AudioPlaybackService : Service() {
                 this, 2, snoozeIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
-            builder.addAction(
-                android.R.drawable.ic_popup_sync,
-                getString(R.string.alarm_snooze),
-                snoozePending
-            )
-        } else if (state.isBgPlaying) {
-            val stopIntent = Intent(this, AudioPlaybackService::class.java).apply {
-                action = ACTION_STOP_BG
+
+            return NotificationCompat.Builder(this, CHANNEL_ALARM_ID)
+                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                .setContentTitle(getString(R.string.alarm_status_ringing))
+                .setContentText("Alarm is active!")
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setOngoing(true)
+                .setAutoCancel(false)
+                .setContentIntent(alarmPendingIntent)
+                .setFullScreenIntent(alarmPendingIntent, true)
+                .addAction(
+                    android.R.drawable.ic_menu_close_clear_cancel,
+                    getString(R.string.alarm_dismiss),
+                    dismissPending
+                )
+                .addAction(
+                    android.R.drawable.ic_popup_sync,
+                    getString(R.string.alarm_snooze),
+                    snoozePending
+                )
+                .build()
+        } else {
+            val text = when {
+                state.isBgPlaying && state.bgDurationMs > 0 -> {
+                    val minutes = (state.bgTimeRemainingMs / 1000) / 60
+                    val seconds = (state.bgTimeRemainingMs / 1000) % 60
+                    String.format("Background sound playing (%02d:%02d remaining)", minutes, seconds)
+                }
+                state.isBgPlaying -> "Background sound playing"
+                else -> "On Time is running"
             }
-            val stopPending = PendingIntent.getService(
-                this, 3, stopIntent,
+
+            val mainIntent = Intent(this, MainActivity::class.java)
+            val pendingIntent = PendingIntent.getActivity(
+                this, 0, mainIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
-            builder.addAction(
-                android.R.drawable.ic_menu_close_clear_cancel,
-                getString(R.string.bg_sound_stop),
-                stopPending
-            )
-        }
 
-        return builder.build()
+            val builder = NotificationCompat.Builder(this, CHANNEL_BG_ID)
+                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                .setContentTitle(getString(R.string.app_name))
+                .setContentText(text)
+                .setContentIntent(pendingIntent)
+                .setOngoing(true)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+
+            if (state.isBgPlaying) {
+                val stopIntent = Intent(this, AudioPlaybackService::class.java).apply {
+                    action = ACTION_STOP_BG
+                }
+                val stopPending = PendingIntent.getService(
+                    this, 3, stopIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                builder.addAction(
+                    android.R.drawable.ic_menu_close_clear_cancel,
+                    getString(R.string.bg_sound_stop),
+                    stopPending
+                )
+            }
+
+            return builder.build()
+        }
     }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Audio Playback Controls",
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+            val bgChannel = NotificationChannel(
+                CHANNEL_BG_ID,
+                "Background Playback",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Controls for background sound and alarms"
+                description = "Ongoing notification for background sound playback"
+                setShowBadge(false)
             }
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.createNotificationChannel(channel)
+
+            val alarmChannel = NotificationChannel(
+                CHANNEL_ALARM_ID,
+                "Alarm Alerts",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "High priority notification and heads-up banner for ringing alarms"
+                setSound(null, null)
+                enableVibration(false)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    setBypassDnd(true)
+                }
+            }
+
+            manager.createNotificationChannel(bgChannel)
+            manager.createNotificationChannel(alarmChannel)
         }
     }
 

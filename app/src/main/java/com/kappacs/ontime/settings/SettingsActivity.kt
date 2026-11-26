@@ -83,6 +83,12 @@ class SettingsActivity : AppCompatActivity() {
             }
             startService(intent)
         }
+
+        binding.switchHapticFeedback.setOnCheckedChangeListener { _, isChecked ->
+            lifecycleScope.launch {
+                settingsRepository.setHapticFeedbackEnabled(isChecked)
+            }
+        }
     }
 
     private fun pickSound(
@@ -157,6 +163,14 @@ class SettingsActivity : AppCompatActivity() {
             settingsRepository.alarmRinging.collect { ringing ->
                 binding.btnPlayAlarm.isEnabled = !ringing
                 binding.btnStopAlarm.isEnabled = ringing
+            }
+        }
+
+        lifecycleScope.launch {
+            settingsRepository.hapticFeedbackEnabled.collect { enabled ->
+                if (binding.switchHapticFeedback.isChecked != enabled) {
+                    binding.switchHapticFeedback.isChecked = enabled
+                }
             }
         }
     }

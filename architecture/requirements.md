@@ -31,6 +31,7 @@
   - Alarm sound source
   - Timed background fade time (seconds; default 0)
   - Alarm snooze time (minutes; default 5)
+  - Haptic feedback enabled (boolean; default false/off)
 - Implementation
   - Kotlin
   - Android Studio
@@ -40,3 +41,5 @@
 - Add the day abbreviation to the tertiary alarm status (e.g. "Wed 08:00" instead of just "08:00"; it's a bit confusing to see just "08:00", unchanged, when the alarm has just gone off on Tuesday at 08:00)
 - Can we get the two-pass rotary time selector in the event editor (the one that works more like setting hands on an analog clock rather than the digit-dials style)?
 - Remove "Trigger Alarm" from the main page and add `Play` and `Stop` buttons in the alarm settings.
+- Haptic feedback should be configurable in settings (default off / disabled).
+- Volume and Power buttons are too easy to press accidentally or mistake one for the other; do not use them as alternate inputs for snooze or dismiss.
